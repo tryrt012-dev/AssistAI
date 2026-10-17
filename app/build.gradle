@@ -1,0 +1,25 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.assist.ai'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.assist.ai"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    // Murni Android SDK bawaan (Tanpa WebView, Ukuran APK < 1.5 MB)
+}
