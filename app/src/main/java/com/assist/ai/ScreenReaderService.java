@@ -92,7 +92,7 @@ public class ScreenReaderService extends AccessibilityService {
         menuLayout.setBackground(menuBg);
 
         inputApiKey = new EditText(this);
-        inputApiKey.setHint("Tempel API Key APIMaster di sini...");
+        inputApiKey.setHint("Tempel Kunci API di sini...");
         inputApiKey.setHintTextColor(Color.GRAY);
         inputApiKey.setTextColor(Color.parseColor("#A6E3A1"));
         inputApiKey.setTextSize(11f);
@@ -101,7 +101,7 @@ public class ScreenReaderService extends AccessibilityService {
 
         ScrollView scrollResult = new ScrollView(this);
         resultText = new TextView(this);
-        resultText.setText("Sentuh tombol ✦ BACA LAYAR untuk scan soal.");
+        resultText.setText("Sentuh tombol ✦ BACA LAYAR untuk memindai soal.");
         resultText.setTextColor(Color.parseColor("#CDD6F4"));
         resultText.setTextSize(13f);
         resultText.setPadding(8, 16, 8, 16);
@@ -111,7 +111,7 @@ public class ScreenReaderService extends AccessibilityService {
         rowButtons.setOrientation(LinearLayout.HORIZONTAL);
 
         Button btnCopy = new Button(this);
-        btnCopy.setText("Salin Jawaban");
+        btnCopy.setText("Salin");
         btnCopy.setTextSize(11f);
         btnCopy.setOnClickListener(v -> {
             ClipboardManager cb = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
@@ -198,7 +198,7 @@ public class ScreenReaderService extends AccessibilityService {
         AccessibilityNodeInfo rootNode = getRootInActiveWindow();
         if (rootNode == null) {
             bubbleBtn.setText("✦ BACA LAYAR");
-            resultText.setText("Gagal membaca layar. Pastikan halaman tugas sedang aktif di depan!");
+            resultText.setText("Gagal membaca layar. Pastikan halaman tugas sedang aktif di depan.");
             return;
         }
 
@@ -236,11 +236,12 @@ public class ScreenReaderService extends AccessibilityService {
 
         executor.execute(() -> {
             try {
-                String promptInstruksi = "Kamu adalah asisten tugas. Berikut adalah teks lengkap dari layar HP pengguna (soal tugas/ujian dan opsi jawabannya):\n\n"
+                String promptInstruksi = "Kamu adalah asisten penjawab tugas sekolah. Berikut teks yang terbaca dari layar HP:\n\n"
                         + kontenLayar + "\n\n"
-                        + "Tugas: Temukan soal di atas, lalu berikan jawaban yang benar, singkat, dan tepat.";
+                        + "Tugas: Temukan pertanyaan atau soal di atas, lalu berikan jawaban yang benar dan penjelasannya secara ringkas.";
 
-                boolean isGemini = apiKey.startsWith("AIza");
+                // Mendukung awalan AIza maupun format baru AQ.
+                boolean isGemini = apiKey.startsWith("AIza") || apiKey.startsWith("AQ.");
                 URL url;
                 String payloadStr;
 
@@ -250,7 +251,6 @@ public class ScreenReaderService extends AccessibilityService {
                     JSONObject content = new JSONObject().put("parts", new JSONArray().put(part));
                     payloadStr = new JSONObject().put("contents", new JSONArray().put(content)).toString();
                 } else {
-                    // MENGARAH LANGSUNG KE ENDPOINT APIMASTER.AI
                     url = new URL("https://apimaster.ai/v1/chat/completions");
                     JSONObject message = new JSONObject().put("role", "user").put("content", promptInstruksi);
                     payloadStr = new JSONObject()
@@ -291,12 +291,12 @@ public class ScreenReaderService extends AccessibilityService {
                         resultText.setText(aiReply);
                         ClipboardManager cb = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                         cb.setPrimaryClip(ClipData.newPlainText("AI", aiReply));
-                        Toast.makeText(ScreenReaderService.this, "Jawaban otomatis tersalin ke Clipboard!", Toast.LENGTH_LONG).show();
+                        Toast.makeText(ScreenReaderService.this, "Jawaban otomatis tersalin ke Clipboard!", Toast.LENGTH_SHORT).show();
                     });
                 } else {
                     mainHandler.post(() -> {
                         bubbleBtn.setText("⚠ Eror");
-                        resultText.setText("Eror APIMaster (" + code + "):\n" + response);
+                        resultText.setText("Eror (" + code + "):\n" + response);
                     });
                 }
             } catch (Exception e) {
