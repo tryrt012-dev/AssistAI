@@ -49,6 +49,8 @@ public class FloatingService extends Service {
     private EditText inputApiKey;
     private WindowManager.LayoutParams params;
     private SharedPreferences prefs;
+    private ClipboardManager clipboardManager;
+    private String lastCopiedText = "";
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
@@ -64,6 +66,27 @@ public class FloatingService extends Service {
         prefs = getSharedPreferences("AssistAIPrefs", MODE_PRIVATE);
 
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        clipboardManager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+
+        // FITUR AUTO: Deteksi otomatis saat kamu menyalin (copy) soal di HP
+        if (clipboardManager != null) {
+            clipboardManager.addPrimaryClipChangedListener(() -> {
+                if (clipboardManager.hasPrimaryClip() && clipboardManager.getPrimaryClip().getItemCount() > 0) {
+                    CharSequence text = clipboardManager.getPrimaryClip().getItemAt(0).getText();
+                    if (text != null) {
+                        String copied = text.toString().trim();
+                        if (!copied.isEmpty() && !copied.equals(lastCopiedText)) {
+                            lastCopiedText = copied;
+                            // Update input dan langsung otomatis kirim ke AI
+                            inputPrompt.setText(copied);
+                            bubbleBtn.setText("⏳ Memikirkan...");
+                            Toast.makeText(FloatingService.this, "Soal tersalin! Sedang mencari jawaban...", Toast.LENGTH_SHORT).show();
+                            kirimKeAI("Jawab soal berikut secara akurat, singkat, dan langsung pada jawaban intinya: \n", copied);
+                        }
+                    }
+                }
+            });
+        }
 
         LinearLayout rootContainer = new LinearLayout(this);
         rootContainer.setOrientation(LinearLayout.VERTICAL);
@@ -71,9 +94,9 @@ public class FloatingService extends Service {
         bubbleBtn = new TextView(this);
         bubbleBtn.setText("✦ AI");
         bubbleBtn.setTextColor(Color.WHITE);
-        bubbleBtn.setTextSize(14f);
+        bubbleBtn.setTextSize(13f);
         bubbleBtn.setGravity(Gravity.CENTER);
-        bubbleBtn.setPadding(34, 24, 34, 24);
+        bubbleBtn.setPadding(30, 20, 30, 20);
 
         GradientDrawable bubbleBg = new GradientDrawable();
         bubbleBg.setColor(Color.parseColor("#4F46E5"));
@@ -83,12 +106,12 @@ public class FloatingService extends Service {
 
         menuLayout = new LinearLayout(this);
         menuLayout.setOrientation(LinearLayout.VERTICAL);
-        menuLayout.setPadding(32, 32, 32, 32);
+        menuLayout.setPadding(28, 28, 28, 28);
         menuLayout.setVisibility(View.GONE);
 
         GradientDrawable menuBg = new GradientDrawable();
         menuBg.setColor(Color.parseColor("#181825"));
-        menuBg.setCornerRadius(36f);
+        menuBg.setCornerRadius(32f);
         menuBg.setStroke(3, Color.parseColor("#6366F1"));
         menuLayout.setBackground(menuBg);
 
@@ -101,63 +124,56 @@ public class FloatingService extends Service {
         inputApiKey.setText(prefs.getString("api_key", ""));
 
         inputPrompt = new EditText(this);
-        inputPrompt.setHint("Ketik soal atau klik 'Tempel Soal'...");
+        inputPrompt.setHint("Salin teks di layar, AI otomatis menjawab...");
         inputPrompt.setHintTextColor(Color.LTGRAY);
         inputPrompt.setTextColor(Color.WHITE);
-        inputPrompt.setTextSize(13f);
+        inputPrompt.setTextSize(12f);
         inputPrompt.setMinLines(2);
-        inputPrompt.setMaxLines(4);
+        inputPrompt.setMaxLines(3);
 
         LinearLayout row1 = new LinearLayout(this);
         row1.setOrientation(LinearLayout.HORIZONTAL);
 
         Button btnPaste = new Button(this);
-        btnPaste.setText("📋 Tempel Soal");
+        btnPaste.setText("📋 Tempel");
         btnPaste.setTextSize(11f);
         btnPaste.setOnClickListener(v -> {
-            ClipboardManager cb = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-            if (cb != null && cb.hasPrimaryClip() && cb.getPrimaryClip().getItemCount() > 0) {
-                CharSequence text = cb.getPrimaryClip().getItemAt(0).getText();
+            if (clipboardManager != null && clipboardManager.hasPrimaryClip() && clipboardManager.getPrimaryClip().getItemCount() > 0) {
+                CharSequence text = clipboardManager.getPrimaryClip().getItemAt(0).getText();
                 if (text != null) inputPrompt.setText(text.toString());
             }
         });
 
-        Button btnGForm = new Button(this);
-        btnGForm.setText("⚡ Jawab Cepat");
-        btnGForm.setTextSize(11f);
-        btnGForm.setOnClickListener(v -> kirimKeAI("Jawab soal berikut secara akurat, singkat, dan langsung pada jawaban intinya (untuk pengisian Google Form): \n"));
-
-        Button btnFormat = new Button(this);
-        btnFormat.setText("📝 Format Tugas");
-        btnFormat.setTextSize(11f);
-        btnFormat.setOnClickListener(v -> kirimKeAI("Jawab tugas berikut dengan susunan rapi, terstruktur, dan siap salin ke dokumen: \n"));
+        Button btnJawab = new Button(this);
+        btnJawab.setText("⚡ Jawab Manual");
+        btnJawab.setTextSize(11f);
+        btnJawab.setOnClickListener(v -> kirimKeAI("Jawab soal berikut secara ringkas dan tepat: \n", inputPrompt.getText().toString().trim()));
 
         row1.addView(btnPaste);
-        row1.addView(btnGForm);
-        row1.addView(btnFormat);
+        row1.addView(btnJawab);
 
         ScrollView scrollResult = new ScrollView(this);
         resultText = new TextView(this);
-        resultText.setText("Jawaban AI akan tampil di sini...");
+        resultText.setText("Jawaban otomatis akan muncul di sini...");
         resultText.setTextColor(Color.parseColor("#CDD6F4"));
         resultText.setTextSize(13f);
-        resultText.setPadding(8, 16, 8, 16);
+        resultText.setPadding(6, 14, 6, 14);
         scrollResult.addView(resultText);
 
         LinearLayout row2 = new LinearLayout(this);
         row2.setOrientation(LinearLayout.HORIZONTAL);
 
         Button btnCopy = new Button(this);
-        btnCopy.setText("Salin Jawaban");
+        btnCopy.setText("Salin Hasil");
         btnCopy.setTextSize(11f);
         btnCopy.setOnClickListener(v -> {
-            ClipboardManager cb = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-            cb.setPrimaryClip(ClipData.newPlainText("AI", resultText.getText().toString()));
-            Toast.makeText(this, "Disalin ke Clipboard!", Toast.LENGTH_SHORT).show();
+            lastCopiedText = resultText.getText().toString(); // Cegah loop auto-kirim
+            clipboardManager.setPrimaryClip(ClipData.newPlainText("AI", lastCopiedText));
+            Toast.makeText(this, "Jawaban disalin!", Toast.LENGTH_SHORT).show();
         });
 
         Button btnHide = new Button(this);
-        btnHide.setText("Tutup Menu");
+        btnHide.setText("Sembunyikan");
         btnHide.setTextSize(11f);
         btnHide.setOnClickListener(v -> toggleMenu(false));
 
@@ -173,7 +189,7 @@ public class FloatingService extends Service {
         menuLayout.addView(inputApiKey);
         menuLayout.addView(inputPrompt);
         menuLayout.addView(row1);
-        menuLayout.addView(scrollResult, new LinearLayout.LayoutParams(780, 400));
+        menuLayout.addView(scrollResult, new LinearLayout.LayoutParams(760, 380));
         menuLayout.addView(row2);
 
         rootContainer.addView(bubbleBtn);
@@ -235,20 +251,21 @@ public class FloatingService extends Service {
         windowManager.updateViewLayout(floatingView, params);
     }
 
-    private void kirimKeAI(String instruksi) {
+    private void kirimKeAI(String instruksi, String soal) {
         String apiKey = inputApiKey.getText().toString().trim();
         if (apiKey.isEmpty()) {
-            Toast.makeText(this, "Isi dulu API Key di baris atas!", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Isi dulu API Key!", Toast.LENGTH_SHORT).show();
+            bubbleBtn.setText("✦ AI");
             return;
         }
         prefs.edit().putString("api_key", apiKey).apply();
 
-        String soal = inputPrompt.getText().toString().trim();
         if (soal.isEmpty()) {
             Toast.makeText(this, "Soal masih kosong!", Toast.LENGTH_SHORT).show();
+            bubbleBtn.setText("✦ AI");
             return;
         }
-        resultText.setText("Sedang memproses jawaban...");
+        resultText.setText("Menghubungi AI...");
 
         executor.execute(() -> {
             try {
@@ -262,7 +279,6 @@ public class FloatingService extends Service {
                     JSONObject content = new JSONObject().put("parts", new JSONArray().put(part));
                     payloadStr = new JSONObject().put("contents", new JSONArray().put(content)).toString();
                 } else {
-                    // Endpoint standar OpenAI / compatible
                     url = new URL("https://api.openai.com/v1/chat/completions");
                     JSONObject message = new JSONObject().put("role", "user").put("content", instruksi + soal);
                     payloadStr = new JSONObject()
@@ -283,32 +299,44 @@ public class FloatingService extends Service {
                     os.write(payloadStr.getBytes("UTF-8"));
                 }
 
+                int code = conn.getResponseCode();
                 BufferedReader br = new BufferedReader(new InputStreamReader(
-                        conn.getResponseCode() == 200 ? conn.getInputStream() : conn.getErrorStream()
+                        code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream()
                 ));
                 StringBuilder response = new StringBuilder();
                 String line;
                 while ((line = br.readLine()) != null) response.append(line);
 
                 JSONObject jsonRes = new JSONObject(response.toString());
-                String aiReply;
-                if (isGemini) {
-                    aiReply = jsonRes.getJSONArray("candidates")
-                            .getJSONObject(0)
-                            .getJSONObject("content")
-                            .getJSONArray("parts")
-                            .getJSONObject(0)
-                            .getString("text");
-                } else {
-                    aiReply = jsonRes.getJSONArray("choices")
-                            .getJSONObject(0)
-                            .getJSONObject("message")
-                            .getString("content");
-                }
 
-                mainHandler.post(() -> resultText.setText(aiReply));
+                if (code >= 200 && code < 300) {
+                    String aiReply;
+                    if (isGemini) {
+                        aiReply = jsonRes.getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text");
+                    } else {
+                        aiReply = jsonRes.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content");
+                    }
+
+                    // Otomatis salin jawaban ke clipboard agar siap langsung dipaste
+                    lastCopiedText = aiReply;
+                    mainHandler.post(() -> {
+                        bubbleBtn.setText("✓ Siap");
+                        resultText.setText(aiReply);
+                        clipboardManager.setPrimaryClip(ClipData.newPlainText("AI", aiReply));
+                        Toast.makeText(FloatingService.this, "Jawaban otomatis tersalin ke Clipboard!", Toast.LENGTH_LONG).show();
+                    });
+                } else {
+                    String errDetail = jsonRes.has("error") ? jsonRes.get("error").toString() : response.toString();
+                    mainHandler.post(() -> {
+                        bubbleBtn.setText("⚠ Eror");
+                        resultText.setText("Eror API (" + code + "): " + errDetail);
+                    });
+                }
             } catch (Exception e) {
-                mainHandler.post(() -> resultText.setText("Gagal: " + e.getMessage()));
+                mainHandler.post(() -> {
+                    bubbleBtn.setText("⚠ Eror");
+                    resultText.setText("Koneksi gagal: " + e.getMessage());
+                });
             }
         });
     }
@@ -321,8 +349,8 @@ public class FloatingService extends Service {
             getSystemService(NotificationManager.class).createNotificationChannel(channel);
 
             Notification notification = new Notification.Builder(this, channelId)
-                    .setContentTitle("Assist AI Berjalan di Latar Belakang")
-                    .setContentText("Ketuk gelembung ✦ AI di layar untuk bertanya")
+                    .setContentTitle("Assist AI Berjalan")
+                    .setContentText("Mode Otomatis Aktif")
                     .setSmallIcon(android.R.drawable.btn_star_big_on)
                     .build();
             startForeground(1, notification);
