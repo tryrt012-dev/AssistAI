@@ -1,474 +1,419 @@
 package com.assist.ai;
 
 import android.accessibilityservice.AccessibilityService;
-import android.content.ClipData;
-import android.content.ClipboardManager;
-import android.content.Context;
-import android.content.SharedPreferences;
-import android.graphics.Color;
-import android.graphics.PixelFormat;
-import android.graphics.Typeface;
+import android.content.*;
+import android.graphics.*;
 import android.graphics.drawable.GradientDrawable;
-import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-import android.view.Gravity;
-import android.view.MotionEvent;
-import android.view.View;
-import android.view.WindowManager;
-import android.view.accessibility.AccessibilityEvent;
-import android.view.accessibility.AccessibilityNodeInfo;
-import android.widget.EditText;
-import android.widget.LinearLayout;
-import android.widget.ProgressBar;
-import android.widget.ScrollView;
-import android.widget.Switch;
-import android.widget.TextView;
-import android.widget.Toast;
-
-import org.json.JSONArray;
-import org.json.JSONObject;
-
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import android.os.*;
+import android.view.*;
+import android.view.accessibility.*;
+import android.widget.*;
+import org.json.*;
+import java.io.*;
+import java.net.*;
+import java.util.*;
+import java.util.concurrent.*;
 
 public class ScreenReaderService extends AccessibilityService {
-
-    private WindowManager windowManager;
-    private LinearLayout rootContainer;
-    private LinearLayout menuCard;
-    private LinearLayout statusBanner;
-    private TextView statusText;
-    private ProgressBar progressBar;
-    private TextView mascotView;
-    private TextView explanationBox;
+    private WindowManager wm;
+    private LinearLayout root, menuCard, banner, apiBox;
+    private TextView statusTxt, mascot, expBox, footer;
     private WindowManager.LayoutParams params;
     private SharedPreferences prefs;
-    private boolean isStealthMode = false;
+    private final ExecutorService exec = Executors.newSingleThreadExecutor();
+    private final Handler handler = new Handler(Looper.getMainLooper());
 
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
-    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private static final String DEFAULT_KEY = "";
 
-    @Override
-    public void onAccessibilityEvent(AccessibilityEvent event) {}
-
-    @Override
-    public void onInterrupt() {}
+    @Override public void onAccessibilityEvent(AccessibilityEvent e) {}
+    @Override public void onInterrupt() {}
 
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
         prefs = getSharedPreferences("AssistAIPrefs", MODE_PRIVATE);
-        initFloatingUI();
+        if (prefs.getString("api_key", "").isEmpty()) {
+            prefs.edit().putString("api_key", DEFAULT_KEY).apply();
+        }
+        initUI();
     }
 
-    private void initFloatingUI() {
-        if (windowManager != null && rootContainer != null) return;
-        windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+    private GradientDrawable bg(String hex, float rad, String strokeHex, int strokeW) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(Color.parseColor(hex));
+        d.setCornerRadius(rad);
+        if (strokeW > 0) d.setStroke(strokeW, Color.parseColor(strokeHex));
+        return d;
+    }
 
-        rootContainer = new LinearLayout(this);
-        rootContainer.setOrientation(LinearLayout.VERTICAL);
-        rootContainer.setGravity(Gravity.CENTER_HORIZONTAL);
+    private void initUI() {
+        if (wm != null && root != null) return;
+        wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+
+        root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setGravity(Gravity.CENTER_HORIZONTAL);
 
         menuCard = new LinearLayout(this);
         menuCard.setOrientation(LinearLayout.VERTICAL);
-        menuCard.setPadding(36, 36, 36, 28);
+        menuCard.setPadding(32, 32, 32, 24);
         menuCard.setVisibility(View.GONE);
+        menuCard.setBackground(bg("#FFFFFF", 42f, "#E2E8F0", 2));
 
-        GradientDrawable cardBg = new GradientDrawable();
-        cardBg.setColor(Color.WHITE);
-        cardBg.setCornerRadius(42f);
-        cardBg.setStroke(2, Color.parseColor("#E2E8F0"));
-        menuCard.setBackground(cardBg);
+        menuCard.addView(item("✨", "Jawab soal otomatis", v -> runAI("PILGAN")));
+        menuCard.addView(item("✏️", "Jawaban diisi AI", v -> runAI("ESAI")));
+        menuCard.addView(item("🎯", "Auto nilai di atas KKM", v -> runAI("KKM")));
+        menuCard.addView(item("📖", "Penjelasan lengkap", v -> runAI("JELAS")));
+        menuCard.addView(item("🔑", "Atur API & Model (OpenCode/Groq)", v -> toggleApiBox()));
 
-        menuCard.addView(createMenuItem("✨", "Jawab soal otomatis", v -> {
-            menuCard.setVisibility(View.GONE);
-            jalankanAI("AUTO_PILGAN");
-        }));
+        LinearLayout sRow = new LinearLayout(this);
+        sRow.setGravity(Gravity.CENTER_VERTICAL);
+        sRow.setPadding(16, 18, 16, 18);
+        TextView sLbl = new TextView(this);
+        sLbl.setText("👁️‍🗨️   Mode samaran");
+        sLbl.setTextColor(Color.parseColor("#1E293B"));
+        sLbl.setTextSize(14f);
+        sLbl.setTypeface(null, Typeface.BOLD);
+        sRow.addView(sLbl, new LinearLayout.LayoutParams(0, -2, 1f));
 
-        menuCard.addView(createMenuItem("✏️", "Jawaban diisi AI", v -> {
-            menuCard.setVisibility(View.GONE);
-            jalankanAI("AUTO_ESAI");
-        }));
-
-        menuCard.addView(createMenuItem("🎯", "Auto nilai di atas KKM", v -> {
-            menuCard.setVisibility(View.GONE);
-            jalankanAI("AUTO_KKM");
-        }));
-
-        menuCard.addView(createMenuItem("📖", "Penjelasan lengkap", v -> {
-            jalankanAI("PENJELASAN");
-        }));
-
-        menuCard.addView(createMenuItem("🔑", "Atur Kunci API", v -> {
-            showApiKeyDialog();
-        }));
-
-        LinearLayout stealthRow = new LinearLayout(this);
-        stealthRow.setOrientation(LinearLayout.HORIZONTAL);
-        stealthRow.setGravity(Gravity.CENTER_VERTICAL);
-        stealthRow.setPadding(16, 22, 16, 22);
-
-        TextView stealthIcon = new TextView(this);
-        stealthIcon.setText("👁️‍🗨️");
-        stealthIcon.setTextSize(16f);
-        stealthIcon.setPadding(18, 12, 28, 12);
-
-        TextView stealthLabel = new TextView(this);
-        stealthLabel.setText("Mode samaran");
-        stealthLabel.setTextColor(Color.parseColor("#1E293B"));
-        stealthLabel.setTextSize(14f);
-        stealthLabel.setTypeface(null, Typeface.BOLD);
-        LinearLayout.LayoutParams lpLabel = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        stealthLabel.setLayoutParams(lpLabel);
-
-        Switch stealthSwitch = new Switch(this);
-        stealthSwitch.setOnCheckedChangeListener((btn, isChecked) -> {
-            isStealthMode = isChecked;
-            mascotView.setAlpha(isChecked ? 0.25f : 1.0f);
-            statusBanner.setAlpha(isChecked ? 0.35f : 1.0f);
+        Switch sw = new Switch(this);
+        sw.setOnCheckedChangeListener((b, chk) -> {
+            mascot.setAlpha(chk ? 0.22f : 1f);
+            banner.setAlpha(chk ? 0.35f : 1f);
         });
+        sRow.addView(sw);
+        menuCard.addView(sRow);
 
-        stealthRow.addView(stealthIcon);
-        stealthRow.addView(stealthLabel);
-        stealthRow.addView(stealthSwitch);
-        menuCard.addView(stealthRow);
+        expBox = new TextView(this);
+        expBox.setTextColor(Color.parseColor("#1E293B"));
+        expBox.setTextSize(12f);
+        expBox.setPadding(20, 16, 20, 16);
+        expBox.setBackground(bg("#F8FAFC", 20f, "#CBD5E1", 1));
+        expBox.setVisibility(View.GONE);
+        menuCard.addView(expBox);
 
-        explanationBox = new TextView(this);
-        explanationBox.setTextColor(Color.parseColor("#334155"));
-        explanationBox.setTextSize(12f);
-        explanationBox.setPadding(20, 16, 20, 16);
-        explanationBox.setVisibility(View.GONE);
-        menuCard.addView(explanationBox);
-
-        TextView footer = new TextView(this);
-        footer.setText("ASSIST AI • OMNIKEY QWEN");
+        footer = new TextView(this);
+        footer.setText("ASSIST AI • MULTI-ENGINE (OPENCODE / GROQ)");
         footer.setTextColor(Color.parseColor("#94A3B8"));
         footer.setTextSize(10f);
         footer.setGravity(Gravity.CENTER);
-        footer.setPadding(0, 14, 0, 4);
+        footer.setPadding(0, 14, 0, 2);
         menuCard.addView(footer);
 
-        mascotView = new TextView(this);
-        mascotView.setText("🎓\n🤖");
-        mascotView.setTextSize(22f);
-        mascotView.setGravity(Gravity.CENTER);
-        mascotView.setPadding(24, 16, 24, 16);
+        mascot = new TextView(this);
+        mascot.setText("🎓\n🤖");
+        mascot.setTextSize(21f);
+        mascot.setGravity(Gravity.CENTER);
+        mascot.setPadding(24, 14, 24, 14);
+        mascot.setBackground(bg("#EEF2FF", 100f, "#4F46E5", 4));
 
-        GradientDrawable mascotBg = new GradientDrawable();
-        mascotBg.setColor(Color.parseColor("#EEF2FF"));
-        mascotBg.setCornerRadius(100f);
-        mascotBg.setStroke(4, Color.parseColor("#4F46E5"));
-        mascotView.setBackground(mascotBg);
+        banner = new LinearLayout(this);
+        banner.setOrientation(LinearLayout.VERTICAL);
+        banner.setPadding(32, 18, 32, 18);
+        banner.setVisibility(View.GONE);
+        banner.setBackground(bg("#FFFFFF", 28f, "#CBD5E1", 2));
 
-        statusBanner = new LinearLayout(this);
-        statusBanner.setOrientation(LinearLayout.VERTICAL);
-        statusBanner.setPadding(36, 20, 36, 20);
-        statusBanner.setVisibility(View.GONE);
+        statusTxt = new TextView(this);
+        statusTxt.setText("✍️ Mengerjakan soal");
+        statusTxt.setTextColor(Color.parseColor("#1E293B"));
+        statusTxt.setTextSize(13f);
+        statusTxt.setTypeface(null, Typeface.BOLD);
 
-        GradientDrawable bannerBg = new GradientDrawable();
-        bannerBg.setColor(Color.WHITE);
-        bannerBg.setCornerRadius(30f);
-        bannerBg.setStroke(2, Color.parseColor("#CBD5E1"));
-        statusBanner.setBackground(bannerBg);
+        ProgressBar pb = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        pb.setIndeterminate(true);
+        banner.addView(statusTxt);
+        banner.addView(pb, new LinearLayout.LayoutParams(400, 22));
 
-        statusText = new TextView(this);
-        statusText.setText("✍️ Mengerjakan soal");
-        statusText.setTextColor(Color.parseColor("#1E293B"));
-        statusText.setTextSize(13f);
-        statusText.setTypeface(null, Typeface.BOLD);
+        root.addView(menuCard, new LinearLayout.LayoutParams(680, -2));
+        root.addView(mascot);
+        root.addView(banner);
 
-        progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        progressBar.setIndeterminate(true);
-        progressBar.setPadding(0, 10, 0, 0);
-
-        statusBanner.addView(statusText);
-        statusBanner.addView(progressBar, new LinearLayout.LayoutParams(420, 24));
-
-        rootContainer.addView(menuCard, new LinearLayout.LayoutParams(680, LinearLayout.LayoutParams.WRAP_CONTENT));
-        rootContainer.addView(mascotView);
-        rootContainer.addView(statusBanner);
-
-        params = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.WRAP_CONTENT,
+        params = new WindowManager.LayoutParams(-2, -2,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-                PixelFormat.TRANSLUCENT
-        );
+                PixelFormat.TRANSLUCENT);
         params.gravity = Gravity.TOP | Gravity.START;
-        params.x = 150;
-        params.y = 450;
+        params.x = 120;
+        params.y = 400;
+        wm.addView(root, params);
 
-        windowManager.addView(rootContainer, params);
-
-        mascotView.setOnTouchListener(new View.OnTouchListener() {
-            private int initialX, initialY;
-            private float initialTouchX, initialTouchY;
-            private long touchStartTime;
-
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                switch (event.getAction()) {
-                    case MotionEvent.ACTION_DOWN:
-                        initialX = params.x;
-                        initialY = params.y;
-                        initialTouchX = event.getRawX();
-                        initialTouchY = event.getRawY();
-                        touchStartTime = System.currentTimeMillis();
-                        return true;
-                    case MotionEvent.ACTION_MOVE:
-                        params.x = initialX + (int) (event.getRawX() - initialTouchX);
-                        params.y = initialY + (int) (event.getRawY() - initialTouchY);
-                        windowManager.updateViewLayout(rootContainer, params);
-                        return true;
-                    case MotionEvent.ACTION_UP:
-                        if (System.currentTimeMillis() - touchStartTime < 220) {
-                            boolean show = menuCard.getVisibility() == View.GONE;
-                            menuCard.setVisibility(show ? View.VISIBLE : View.GONE);
-                            explanationBox.setVisibility(View.GONE);
-                        }
-                        return true;
+        mascot.setOnTouchListener(new View.OnTouchListener() {
+            int ix, iy; float tx, ty; long t0;
+            @Override public boolean onTouch(View v, MotionEvent e) {
+                if (e.getAction() == MotionEvent.ACTION_DOWN) {
+                    ix = params.x; iy = params.y; tx = e.getRawX(); ty = e.getRawY();
+                    t0 = System.currentTimeMillis(); return true;
+                } else if (e.getAction() == MotionEvent.ACTION_MOVE) {
+                    params.x = ix + (int)(e.getRawX() - tx);
+                    params.y = iy + (int)(e.getRawY() - ty);
+                    wm.updateViewLayout(root, params); return true;
+                } else if (e.getAction() == MotionEvent.ACTION_UP) {
+                    if (System.currentTimeMillis() - t0 < 220) {
+                        boolean show = menuCard.getVisibility() == View.GONE;
+                        menuCard.setVisibility(show ? View.VISIBLE : View.GONE);
+                        if (!show) setFocusable(false);
+                    }
+                    return true;
                 }
                 return false;
             }
         });
     }
 
-    private View createMenuItem(String emoji, String title, View.OnClickListener listener) {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(16, 22, 16, 22);
-
-        TextView icon = new TextView(this);
-        icon.setText(emoji);
-        icon.setTextSize(16f);
-        icon.setGravity(Gravity.CENTER);
-        icon.setPadding(18, 12, 28, 12);
-
-        GradientDrawable iconBg = new GradientDrawable();
-        iconBg.setColor(Color.parseColor("#F1F5F9"));
-        iconBg.setCornerRadius(20f);
-        icon.setBackground(iconBg);
-
-        TextView label = new TextView(this);
-        label.setText(title);
-        label.setTextColor(Color.parseColor("#1E293B"));
-        label.setTextSize(14f);
-        label.setTypeface(null, Typeface.BOLD);
-        label.setPadding(24, 0, 0, 0);
-
-        row.addView(icon);
-        row.addView(label);
-        row.setOnClickListener(listener);
-        return row;
+    private View item(String ic, String txt, View.OnClickListener l) {
+        LinearLayout r = new LinearLayout(this);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(14, 18, 14, 18);
+        TextView i = new TextView(this);
+        i.setText(ic); i.setTextSize(15f); i.setPadding(18, 10, 18, 10);
+        i.setBackground(bg("#F1F5F9", 18f, "#00000000", 0));
+        TextView t = new TextView(this);
+        t.setText(txt); t.setTextColor(Color.parseColor("#1E293B"));
+        t.setTextSize(14f); t.setTypeface(null, Typeface.BOLD);
+        t.setPadding(22, 0, 0, 0);
+        r.addView(i); r.addView(t); r.setOnClickListener(l);
+        return r;
     }
 
-    private void showApiKeyDialog() {
-        params.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL;
-        windowManager.updateViewLayout(rootContainer, params);
-
-        EditText input = new EditText(this);
-        input.setHint("Tempel Kunci Omnikey (Omnikey-...)");
-        input.setText(prefs.getString("api_key", ""));
-        input.setTextColor(Color.BLACK);
-        input.setPadding(40, 30, 40, 30);
-
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setBackgroundColor(Color.WHITE);
-        box.setPadding(30, 30, 30, 30);
-
-        TextView btnSave = new TextView(this);
-        btnSave.setText("💾 SIMPAN KUNCI OMNIKEY");
-        btnSave.setTextColor(Color.WHITE);
-        btnSave.setBackgroundColor(Color.parseColor("#4F46E5"));
-        btnSave.setGravity(Gravity.CENTER);
-        btnSave.setPadding(20, 24, 20, 24);
-        btnSave.setOnClickListener(v -> {
-            prefs.edit().putString("api_key", input.getText().toString().trim()).apply();
-            menuCard.removeView(box);
-            params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
-            windowManager.updateViewLayout(rootContainer, params);
-            Toast.makeText(this, "Kunci Omnikey tersimpan!", Toast.LENGTH_SHORT).show();
-        });
-
-        box.addView(input);
-        box.addView(btnSave);
-        menuCard.addView(box, 0);
+    private void setFocusable(boolean focus) {
+        params.flags = focus ? WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                             : WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+        wm.updateViewLayout(root, params);
     }
 
-    private void jalankanAI(String mode) {
-        String apiKey = prefs.getString("api_key", "").trim();
-        if (apiKey.isEmpty()) {
-            menuCard.setVisibility(View.VISIBLE);
-            showApiKeyDialog();
-            Toast.makeText(this, "Masukkan Kunci API Omnikey terlebih dahulu!", Toast.LENGTH_SHORT).show();
+    private void toggleApiBox() {
+        if (apiBox != null && apiBox.getParent() != null) {
+            menuCard.removeView(apiBox);
+            setFocusable(false);
             return;
         }
+        setFocusable(true);
+        apiBox = new LinearLayout(this);
+        apiBox.setOrientation(LinearLayout.VERTICAL);
+        apiBox.setPadding(20, 20, 20, 20);
+        apiBox.setBackground(bg("#F8FAFC", 24f, "#CBD5E1", 2));
 
-        statusBanner.setVisibility(View.VISIBLE);
-        statusText.setText("✍️ Mengerjakan soal");
+        EditText inKey = new EditText(this);
+        inKey.setHint("API Key (OpenCode / gsk_ / AIza / sk-)");
+        inKey.setText(prefs.getString("api_key", DEFAULT_KEY));
+        inKey.setTextColor(Color.BLACK); inKey.setTextSize(12f);
+
+        EditText inUrl = new EditText(this);
+        inUrl.setHint("URL (Kosongkan = Auto Detect)");
+        inUrl.setText(prefs.getString("api_url", ""));
+        inUrl.setTextColor(Color.BLACK); inUrl.setTextSize(12f);
+
+        EditText inMod = new EditText(this);
+        inMod.setHint("Model (Kosongkan = Auto)");
+        inMod.setText(prefs.getString("api_model", ""));
+        inMod.setTextColor(Color.BLACK); inMod.setTextSize(12f);
+
+        LinearLayout presets = new LinearLayout(this);
+        presets.addView(presetBtn("OpenCode", () -> {
+            inUrl.setText("https://opencode.ai/zen/v1/chat/completions");
+            inMod.setText("big-pickle");
+        }));
+        presets.addView(presetBtn("Groq", () -> {
+            inUrl.setText("https://api.groq.com/openai/v1/chat/completions");
+            inMod.setText("llama-3.3-70b-versatile");
+        }));
+        presets.addView(presetBtn("Auto", () -> {
+            inUrl.setText(""); inMod.setText("");
+        }));
+
+        TextView save = new TextView(this);
+        save.setText("💾 SIMPAN PENGATURAN");
+        save.setTextColor(Color.WHITE); save.setGravity(Gravity.CENTER);
+        save.setPadding(16, 20, 16, 20);
+        save.setBackground(bg("#4F46E5", 18f, "#00000000", 0));
+        save.setOnClickListener(v -> {
+            prefs.edit()
+                .putString("api_key", fixKey(inKey.getText().toString()))
+                .putString("api_url", inUrl.getText().toString().trim())
+                .putString("api_model", inMod.getText().toString().trim())
+                .apply();
+            menuCard.removeView(apiBox);
+            setFocusable(false);
+            Toast.makeText(this, "Tersimpan!", Toast.LENGTH_SHORT).show();
+        });
+
+        apiBox.addView(presets);
+        apiBox.addView(inKey);
+        apiBox.addView(inUrl);
+        apiBox.addView(inMod);
+        apiBox.addView(save);
+        menuCard.addView(apiBox, 0);
+    }
+
+    private TextView presetBtn(String name, Runnable r) {
+        TextView b = new TextView(this);
+        b.setText(name); b.setTextSize(11f); b.setTextColor(Color.parseColor("#4F46E5"));
+        b.setPadding(18, 10, 18, 10);
+        b.setBackground(bg("#EEF2FF", 14f, "#4F46E5", 1));
+        b.setOnClickListener(v -> r.run());
+        return b;
+    }
+
+    private String fixKey(String k) {
+        k = k.trim();
+        if (k.startsWith("Gsk_")) return "g" + k.substring(1);
+        if (k.startsWith("Sk-")) return "s" + k.substring(1);
+        if (k.startsWith("Aiza")) return "AI" + k.substring(2);
+        return k;
+    }
+
+    private void runAI(String mode) {
+        if (!"JELAS".equals(mode)) menuCard.setVisibility(View.GONE);
+        setFocusable(false);
+        String key = fixKey(prefs.getString("api_key", DEFAULT_KEY));
+        if (key.isEmpty()) { menuCard.setVisibility(View.VISIBLE); toggleApiBox(); return; }
+
+        banner.setVisibility(View.VISIBLE);
+        statusTxt.setText("ESAI".equals(mode) ? "✍️ Menulis jawaban esai" : "✍️ Mengerjakan soal");
 
         AccessibilityNodeInfo rootNode = getRootInActiveWindow();
         if (rootNode == null) {
-            statusText.setText("⚠️ Layar tidak terbaca");
-            mainHandler.postDelayed(() -> statusBanner.setVisibility(View.GONE), 2000);
+            statusTxt.setText("⚠️ Layar tidak terbaca");
+            handler.postDelayed(() -> banner.setVisibility(View.GONE), 2000);
             return;
         }
 
-        StringBuilder screenText = new StringBuilder();
-        List<AccessibilityNodeInfo> allNodes = new ArrayList<>();
-        collectNodes(rootNode, screenText, allNodes);
+        StringBuilder sb = new StringBuilder();
+        List<AccessibilityNodeInfo> nodes = new ArrayList<>();
+        scan(rootNode, sb, nodes);
+        String text = sb.toString().trim();
 
-        String konten = screenText.toString().trim();
-        if (konten.isEmpty()) {
-            statusText.setText("⚠️ Teks soal kosong");
-            mainHandler.postDelayed(() -> statusBanner.setVisibility(View.GONE), 2000);
+        if (text.isEmpty()) {
+            statusTxt.setText("⚠️ Teks soal kosong");
+            handler.postDelayed(() -> banner.setVisibility(View.GONE), 2000);
             return;
         }
 
-        executor.execute(() -> {
+        exec.execute(() -> {
             try {
-                String prompt;
-                if ("AUTO_PILGAN".equals(mode) || "AUTO_KKM".equals(mode)) {
-                    prompt = "Berikut adalah teks soal dan pilihan ganda:\n\n" + konten +
-                            "\n\nTugas: Berikan HANYA teks persis dari pilihan jawaban yang benar (tanpa penjelasan tambahan).";
-                } else if ("AUTO_ESAI".equals(mode)) {
-                    prompt = "Berikut adalah soal esai:\n\n" + konten +
-                            "\n\nTugas: Tuliskan jawaban esai secara singkat, padat, dan jelas dalam 1 paragraf.";
-                } else {
-                    prompt = "Berikan jawaban dan penjelasan lengkap langkah demi langkah untuk soal ini:\n\n" + konten;
-                }
+                String prompt = "PILGAN".equals(mode) || "KKM".equals(mode)
+                    ? "Soal di layar:\n" + text + "\n\nBerikan HANYA teks persis opsi jawaban yang benar tanpa penjelasan."
+                    : "ESAI".equals(mode)
+                    ? "Soal esai:\n" + text + "\n\nTuliskan jawaban singkat, padat, dan langkah intinya dalam 1 paragraf."
+                    : "Jelaskan langkah penyelesaian dan jawaban soal ini secara singkat:\n" + text;
 
-                String aiReply = requestOmnikey(apiKey, prompt).trim();
-
-                mainHandler.post(() -> {
+                String ans = callAPI(key, prompt).trim();
+                handler.post(() -> {
                     ClipboardManager cb = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                    cb.setPrimaryClip(ClipData.newPlainText("AI", aiReply));
+                    cb.setPrimaryClip(ClipData.newPlainText("AI", ans));
 
-                    if ("AUTO_PILGAN".equals(mode) || "AUTO_KKM".equals(mode)) {
-                        boolean clicked = autoClickOption(allNodes, aiReply);
-                        statusText.setText(clicked ? "✅ Dijawab: " + aiReply : "📋 Jawaban: " + aiReply);
-                    } else if ("AUTO_ESAI".equals(mode)) {
-                        boolean typed = autoTypeEssay(allNodes, aiReply);
-                        statusText.setText(typed ? "✅ Esai terisi!" : "📋 Disalin ke Clipboard!");
+                    if ("PILGAN".equals(mode) || "KKM".equals(mode)) {
+                        boolean ok = clickOpt(nodes, ans);
+                        statusTxt.setText((ok ? "✅ Dijawab: " : "📋 Jawaban: ") + ans);
+                    } else if ("ESAI".equals(mode)) {
+                        boolean ok = fillEssay(nodes, ans);
+                        statusTxt.setText(ok ? "✅ Esai diisi otomatis!" : "📋 Disalin ke Clipboard!");
                     } else {
                         menuCard.setVisibility(View.VISIBLE);
-                        explanationBox.setVisibility(View.VISIBLE);
-                        explanationBox.setText("💡 Jawaban:\n" + aiReply);
-                        statusText.setText("✅ Selesai");
+                        expBox.setVisibility(View.VISIBLE);
+                        expBox.setText("💡 Jawaban:\n" + ans);
+                        statusTxt.setText("✅ Selesai");
                     }
-
-                    mainHandler.postDelayed(() -> statusBanner.setVisibility(View.GONE), 3000);
+                    handler.postDelayed(() -> banner.setVisibility(View.GONE), 3500);
                 });
-
             } catch (Exception e) {
-                mainHandler.post(() -> {
-                    statusText.setText("❌ Gagal Terhubung");
+                handler.post(() -> {
+                    statusTxt.setText("❌ Eror API");
                     menuCard.setVisibility(View.VISIBLE);
-                    explanationBox.setVisibility(View.VISIBLE);
-                    explanationBox.setText("Eror:\n" + e.getMessage());
-                    mainHandler.postDelayed(() -> statusBanner.setVisibility(View.GONE), 3000);
+                    expBox.setVisibility(View.VISIBLE);
+                    expBox.setText("⚠️ Gagal:\n" + e.getMessage());
+                    handler.postDelayed(() -> banner.setVisibility(View.GONE), 3500);
                 });
             }
         });
     }
 
-    private void collectNodes(AccessibilityNodeInfo node, StringBuilder sb, List<AccessibilityNodeInfo> list) {
-        if (node == null) return;
-        list.add(node);
-        if (node.getText() != null && node.getText().length() > 0) {
-            sb.append(node.getText().toString()).append("\n");
-        }
-        for (int i = 0; i < node.getChildCount(); i++) {
-            collectNodes(node.getChild(i), sb, list);
-        }
+    private void scan(AccessibilityNodeInfo n, StringBuilder sb, List<AccessibilityNodeInfo> list) {
+        if (n == null) return;
+        list.add(n);
+        CharSequence t = n.getText();
+        CharSequence d = n.getContentDescription();
+        if (t != null && t.length() > 0) sb.append(t).append("\n");
+        else if (d != null && d.length() > 0) sb.append(d).append("\n");
+        for (int i = 0; i < n.getChildCount(); i++) scan(n.getChild(i), sb, list);
     }
 
-    private boolean autoClickOption(List<AccessibilityNodeInfo> nodes, String targetAnswer) {
-        String cleanTarget = targetAnswer.replaceAll("^[A-Ea-e][\\.\\)]\\s*", "").trim().toLowerCase();
-        for (AccessibilityNodeInfo node : nodes) {
-            if (node.getText() != null) {
-                String nodeText = node.getText().toString().trim().toLowerCase();
-                if (!cleanTarget.isEmpty() && (nodeText.equals(cleanTarget) || nodeText.contains(cleanTarget))) {
-                    AccessibilityNodeInfo clickable = node;
-                    while (clickable != null && !clickable.isClickable()) {
-                        clickable = clickable.getParent();
-                    }
-                    if (clickable != null) {
-                        clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                        return true;
-                    } else {
-                        node.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                        return true;
-                    }
-                }
+    private boolean clickOpt(List<AccessibilityNodeInfo> nodes, String ans) {
+        String clean = ans.replaceAll("^[A-Ea-e][\\.\\)]\\s*", "").trim().toLowerCase();
+        for (AccessibilityNodeInfo n : nodes) {
+            String t = n.getText() != null ? n.getText().toString() :
+                       (n.getContentDescription() != null ? n.getContentDescription().toString() : "");
+            t = t.trim().toLowerCase();
+            if (!clean.isEmpty() && !t.isEmpty() && (t.equals(clean) || t.contains(clean))) {
+                AccessibilityNodeInfo c = n;
+                while (c != null && !c.isClickable()) c = c.getParent();
+                if (c != null) return c.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                return n.performAction(AccessibilityNodeInfo.ACTION_CLICK);
             }
         }
         return false;
     }
 
-    private boolean autoTypeEssay(List<AccessibilityNodeInfo> nodes, String essayAnswer) {
-        for (AccessibilityNodeInfo node : nodes) {
-            if (node.isEditable() || (node.getClassName() != null && node.getClassName().toString().contains("EditText"))) {
-                Bundle args = new Bundle();
-                args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, essayAnswer);
-                node.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
-                return node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
+    private boolean fillEssay(List<AccessibilityNodeInfo> nodes, String ans) {
+        for (AccessibilityNodeInfo n : nodes) {
+            if (n.isEditable() || (n.getClassName() != null && n.getClassName().toString().contains("EditText"))) {
+                Bundle b = new Bundle();
+                b.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, ans);
+                n.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+                return n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, b);
             }
         }
         return false;
     }
 
-    private String requestOmnikey(String apiKey, String prompt) throws Exception {
-        URL url = new URL("https://www.ommikey.my.id/api/v1/chat/completions");
-        
-        JSONObject message = new JSONObject().put("role", "user").put("content", prompt);
-        JSONObject payload = new JSONObject()
-                .put("model", "qwen-max")
-                .put("messages", new JSONArray().put(message));
+    private String callAPI(String key, String prompt) throws Exception {
+        String customUrl = prefs.getString("api_url", "").trim();
+        String customMod = prefs.getString("api_model", "").trim();
 
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("POST");
-        conn.setRequestProperty("Content-Type", "application/json");
-        conn.setRequestProperty("Authorization", "Bearer " + apiKey);
-        conn.setDoOutput(true);
-
-        try (OutputStream os = conn.getOutputStream()) {
-            os.write(payload.toString().getBytes("UTF-8"));
+        if (key.startsWith("AIza") || key.startsWith("AQ.")) {
+            URL u = new URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + key);
+            JSONObject p = new JSONObject().put("contents", new JSONArray().put(
+                new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", prompt)))));
+            JSONObject res = post(u, null, p.toString());
+            return res.getJSONArray("candidates").getJSONObject(0).getJSONObject("content")
+                      .getJSONArray("parts").getJSONObject(0).getString("text");
         }
 
-        int code = conn.getResponseCode();
+        String endpoint = !customUrl.isEmpty() ? customUrl :
+            key.startsWith("gsk_") ? "https://api.groq.com/openai/v1/chat/completions" :
+            key.startsWith("sk-or-") ? "https://openrouter.ai/api/v1/chat/completions" :
+            key.startsWith("Omnikey-") ? "https://www.ommikey.my.id/api/v1/chat/completions" :
+            "https://opencode.ai/zen/v1/chat/completions";
+
+        String model = !customMod.isEmpty() ? customMod :
+            endpoint.contains("groq.com") ? "llama-3.3-70b-versatile" :
+            endpoint.contains("openrouter.ai") ? "qwen/qwen-2.5-72b-instruct:free" :
+            endpoint.contains("ommikey") ? "gpt-4o-mini" : "big-pickle";
+
+        JSONObject msg = new JSONObject().put("role", "user").put("content", prompt);
+        JSONObject body = new JSONObject().put("model", model).put("messages", new JSONArray().put(msg));
+        JSONObject res = post(new URL(endpoint), key, body.toString());
+        return res.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content");
+    }
+
+    private JSONObject post(URL url, String bearer, String json) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) url.openConnection();
+        c.setRequestMethod("POST");
+        c.setRequestProperty("Content-Type", "application/json");
+        if (bearer != null) c.setRequestProperty("Authorization", "Bearer " + bearer);
+        c.setDoOutput(true);
+        try (OutputStream os = c.getOutputStream()) { os.write(json.getBytes("UTF-8")); }
+        int code = c.getResponseCode();
         BufferedReader br = new BufferedReader(new InputStreamReader(
-                code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream()
-        ));
-        StringBuilder response = new StringBuilder();
-        String line;
-        while ((line = br.readLine()) != null) response.append(line);
-
-        if (code < 200 || code >= 300) {
-            throw new Exception("HTTP " + code + ": " + response.toString());
-        }
-
-        JSONObject jsonRes = new JSONObject(response.toString());
-        return jsonRes.getJSONArray("choices")
-                .getJSONObject(0)
-                .getJSONObject("message")
-                .getString("content");
+            code >= 200 && code < 300 ? c.getInputStream() : c.getErrorStream()));
+        StringBuilder sb = new StringBuilder(); String line;
+        while ((line = br.readLine()) != null) sb.append(line);
+        if (code < 200 || code >= 300) throw new Exception("HTTP " + code + ": " + sb);
+        return new JSONObject(sb.toString());
     }
 
-    @Override
-    public void onDestroy() {
+    @Override public void onDestroy() {
         super.onDestroy();
-        if (rootContainer != null) windowManager.removeView(rootContainer);
+        if (root != null) wm.removeView(root);
     }
 }
