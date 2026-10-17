@@ -67,7 +67,6 @@ public class ScreenReaderService extends AccessibilityService {
         LinearLayout rootContainer = new LinearLayout(this);
         rootContainer.setOrientation(LinearLayout.VERTICAL);
 
-        // Gelembung Utama
         bubbleBtn = new TextView(this);
         bubbleBtn.setText("✦ BACA LAYAR");
         bubbleBtn.setTextColor(Color.WHITE);
@@ -81,7 +80,6 @@ public class ScreenReaderService extends AccessibilityService {
         bubbleBg.setStroke(3, Color.WHITE);
         bubbleBtn.setBackground(bubbleBg);
 
-        // Menu Hasil
         menuLayout = new LinearLayout(this);
         menuLayout.setOrientation(LinearLayout.VERTICAL);
         menuLayout.setPadding(28, 28, 28, 28);
@@ -94,7 +92,7 @@ public class ScreenReaderService extends AccessibilityService {
         menuLayout.setBackground(menuBg);
 
         inputApiKey = new EditText(this);
-        inputApiKey.setHint("Tempel API Key di sini (cukup sekali)...");
+        inputApiKey.setHint("Tempel API Key APIMaster di sini...");
         inputApiKey.setHintTextColor(Color.GRAY);
         inputApiKey.setTextColor(Color.parseColor("#A6E3A1"));
         inputApiKey.setTextSize(11f);
@@ -103,7 +101,7 @@ public class ScreenReaderService extends AccessibilityService {
 
         ScrollView scrollResult = new ScrollView(this);
         resultText = new TextView(this);
-        resultText.setText("Tekan tombol di gelembung untuk scan layar tugas.");
+        resultText.setText("Sentuh tombol ✦ BACA LAYAR untuk scan soal.");
         resultText.setTextColor(Color.parseColor("#CDD6F4"));
         resultText.setTextSize(13f);
         resultText.setPadding(8, 16, 8, 16);
@@ -113,7 +111,7 @@ public class ScreenReaderService extends AccessibilityService {
         rowButtons.setOrientation(LinearLayout.HORIZONTAL);
 
         Button btnCopy = new Button(this);
-        btnCopy.setText("Salin");
+        btnCopy.setText("Salin Jawaban");
         btnCopy.setTextSize(11f);
         btnCopy.setOnClickListener(v -> {
             ClipboardManager cb = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
@@ -172,7 +170,6 @@ public class ScreenReaderService extends AccessibilityService {
                         return true;
                     case MotionEvent.ACTION_UP:
                         if (System.currentTimeMillis() - touchStartTime < 250) {
-                            // JIKA DIKLIK SEKALI: BACA LAYAR DAN JAWAB OTOMATIS!
                             bacaDanJawabLayar();
                         }
                         return true;
@@ -193,16 +190,15 @@ public class ScreenReaderService extends AccessibilityService {
         windowManager.updateViewLayout(floatingView, params);
     }
 
-    // FUNGSI INTI: Membaca seluruh teks yang sedang aktif di layar HP
     private void bacaDanJawabLayar() {
         toggleMenu(true);
         bubbleBtn.setText("⏳ Memindai...");
-        resultText.setText("Sedang membaca teks dari layar...");
+        resultText.setText("Membaca soal dari layar HP...");
 
         AccessibilityNodeInfo rootNode = getRootInActiveWindow();
         if (rootNode == null) {
             bubbleBtn.setText("✦ BACA LAYAR");
-            resultText.setText("Gagal membaca layar. Pastikan layar tugas sedang terbuka di depan!");
+            resultText.setText("Gagal membaca layar. Pastikan halaman tugas sedang aktif di depan!");
             return;
         }
 
@@ -212,12 +208,9 @@ public class ScreenReaderService extends AccessibilityService {
         String contextText = screenContent.toString().trim();
         if (contextText.isEmpty()) {
             bubbleBtn.setText("✦ BACA LAYAR");
-            resultText.setText("Tidak ada teks yang terdeteksi di layar saat ini.");
+            resultText.setText("Tidak ada teks yang terbaca di layar.");
             return;
         }
-
-        resultText.setText("Teks layar terbaca! Sedang mengirim ke AI...\n\nPreview isi layar:\n" + 
-                (contextText.length() > 150 ? contextText.substring(0, 150) + "..." : contextText));
 
         kirimKeAI(contextText);
     }
@@ -235,7 +228,7 @@ public class ScreenReaderService extends AccessibilityService {
     private void kirimKeAI(String kontenLayar) {
         String apiKey = inputApiKey.getText().toString().trim();
         if (apiKey.isEmpty()) {
-            Toast.makeText(this, "Isi dulu API Key di baris atas!", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Isi dulu API Key!", Toast.LENGTH_SHORT).show();
             bubbleBtn.setText("✦ BACA LAYAR");
             return;
         }
@@ -243,9 +236,9 @@ public class ScreenReaderService extends AccessibilityService {
 
         executor.execute(() -> {
             try {
-                String promptInstruksi = "Kamu adalah asisten tugas. Berikut adalah teks lengkap yang diambil langsung dari layar HP pengguna (termasuk soal ujian/tugas dan pilihannya):\n\n"
+                String promptInstruksi = "Kamu adalah asisten tugas. Berikut adalah teks lengkap dari layar HP pengguna (soal tugas/ujian dan opsi jawabannya):\n\n"
                         + kontenLayar + "\n\n"
-                        + "Tugasmu: Temukan pertanyaan tugas yang ada di teks di atas, lalu berikan jawaban yang benar, singkat, dan tepat.";
+                        + "Tugas: Temukan soal di atas, lalu berikan jawaban yang benar, singkat, dan tepat.";
 
                 boolean isGemini = apiKey.startsWith("AIza");
                 URL url;
@@ -257,7 +250,8 @@ public class ScreenReaderService extends AccessibilityService {
                     JSONObject content = new JSONObject().put("parts", new JSONArray().put(part));
                     payloadStr = new JSONObject().put("contents", new JSONArray().put(content)).toString();
                 } else {
-                    url = new URL("https://api.openai.com/v1/chat/completions");
+                    // MENGARAH LANGSUNG KE ENDPOINT APIMASTER.AI
+                    url = new URL("https://apimaster.ai/v1/chat/completions");
                     JSONObject message = new JSONObject().put("role", "user").put("content", promptInstruksi);
                     payloadStr = new JSONObject()
                             .put("model", "gpt-4o-mini")
@@ -297,12 +291,12 @@ public class ScreenReaderService extends AccessibilityService {
                         resultText.setText(aiReply);
                         ClipboardManager cb = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                         cb.setPrimaryClip(ClipData.newPlainText("AI", aiReply));
-                        Toast.makeText(ScreenReaderService.this, "Jawaban otomatis tersalin ke Clipboard!", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(ScreenReaderService.this, "Jawaban otomatis tersalin ke Clipboard!", Toast.LENGTH_LONG).show();
                     });
                 } else {
                     mainHandler.post(() -> {
                         bubbleBtn.setText("⚠ Eror");
-                        resultText.setText("Eror API (" + code + "):\n" + response);
+                        resultText.setText("Eror APIMaster (" + code + "):\n" + response);
                     });
                 }
             } catch (Exception e) {
