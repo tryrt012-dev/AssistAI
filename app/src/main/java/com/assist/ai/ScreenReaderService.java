@@ -1,7 +1,6 @@
 package com.assist.ai;
 
 import android.accessibilityservice.AccessibilityService;
-import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -78,7 +77,6 @@ public class ScreenReaderService extends AccessibilityService {
         rootContainer.setOrientation(LinearLayout.VERTICAL);
         rootContainer.setGravity(Gravity.CENTER_HORIZONTAL);
 
-        // 1. KARTU MENU PUTIH (Persis Video)
         menuCard = new LinearLayout(this);
         menuCard.setOrientation(LinearLayout.VERTICAL);
         menuCard.setPadding(36, 36, 36, 28);
@@ -90,7 +88,6 @@ public class ScreenReaderService extends AccessibilityService {
         cardBg.setStroke(2, Color.parseColor("#E2E8F0"));
         menuCard.setBackground(cardBg);
 
-        // Item Menu
         menuCard.addView(createMenuItem("✨", "Jawab soal otomatis", v -> {
             menuCard.setVisibility(View.GONE);
             jalankanAI("AUTO_PILGAN");
@@ -114,7 +111,6 @@ public class ScreenReaderService extends AccessibilityService {
             showApiKeyDialog();
         }));
 
-        // Baris Mode Samaran (Switch)
         LinearLayout stealthRow = new LinearLayout(this);
         stealthRow.setOrientation(LinearLayout.HORIZONTAL);
         stealthRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -138,7 +134,6 @@ public class ScreenReaderService extends AccessibilityService {
             isStealthMode = isChecked;
             mascotView.setAlpha(isChecked ? 0.25f : 1.0f);
             statusBanner.setAlpha(isChecked ? 0.35f : 1.0f);
-            Toast.makeText(this, isChecked ? "Mode samaran aktif" : "Mode samaran mati", Toast.LENGTH_SHORT).show();
         });
 
         stealthRow.addView(stealthIcon);
@@ -146,7 +141,6 @@ public class ScreenReaderService extends AccessibilityService {
         stealthRow.addView(stealthSwitch);
         menuCard.addView(stealthRow);
 
-        // Kotak Penjelasan / Log Hasil (Muncul saat dibutuhkan)
         explanationBox = new TextView(this);
         explanationBox.setTextColor(Color.parseColor("#334155"));
         explanationBox.setTextSize(12f);
@@ -154,16 +148,14 @@ public class ScreenReaderService extends AccessibilityService {
         explanationBox.setVisibility(View.GONE);
         menuCard.addView(explanationBox);
 
-        // Watermark bawah menu
         TextView footer = new TextView(this);
-        footer.setText("ASSIST AI • HEADLESS MODE");
+        footer.setText("ASSIST AI • OMNIKEY QWEN");
         footer.setTextColor(Color.parseColor("#94A3B8"));
         footer.setTextSize(10f);
         footer.setGravity(Gravity.CENTER);
         footer.setPadding(0, 14, 0, 4);
         menuCard.addView(footer);
 
-        // 2. MASKOT ROBOT AI MELAYANG
         mascotView = new TextView(this);
         mascotView.setText("🎓\n🤖");
         mascotView.setTextSize(22f);
@@ -176,7 +168,6 @@ public class ScreenReaderService extends AccessibilityService {
         mascotBg.setStroke(4, Color.parseColor("#4F46E5"));
         mascotView.setBackground(mascotBg);
 
-        // 3. BANNER STATUS ("✍️ Mengerjakan soal" + Progress Bar)
         statusBanner = new LinearLayout(this);
         statusBanner.setOrientation(LinearLayout.VERTICAL);
         statusBanner.setPadding(36, 20, 36, 20);
@@ -218,7 +209,6 @@ public class ScreenReaderService extends AccessibilityService {
 
         windowManager.addView(rootContainer, params);
 
-        // Sensor Geser & Ketuk Maskot Robot
         mascotView.setOnTouchListener(new View.OnTouchListener() {
             private int initialX, initialY;
             private float initialTouchX, initialTouchY;
@@ -287,7 +277,7 @@ public class ScreenReaderService extends AccessibilityService {
         windowManager.updateViewLayout(rootContainer, params);
 
         EditText input = new EditText(this);
-        input.setHint("Tempel API Key (AQ... / AIza... / sk-...)");
+        input.setHint("Tempel Kunci Omnikey (Omnikey-...)");
         input.setText(prefs.getString("api_key", ""));
         input.setTextColor(Color.BLACK);
         input.setPadding(40, 30, 40, 30);
@@ -298,7 +288,7 @@ public class ScreenReaderService extends AccessibilityService {
         box.setPadding(30, 30, 30, 30);
 
         TextView btnSave = new TextView(this);
-        btnSave.setText("💾 SIMPAN KUNCI API");
+        btnSave.setText("💾 SIMPAN KUNCI OMNIKEY");
         btnSave.setTextColor(Color.WHITE);
         btnSave.setBackgroundColor(Color.parseColor("#4F46E5"));
         btnSave.setGravity(Gravity.CENTER);
@@ -308,7 +298,7 @@ public class ScreenReaderService extends AccessibilityService {
             menuCard.removeView(box);
             params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
             windowManager.updateViewLayout(rootContainer, params);
-            Toast.makeText(this, "API Key tersimpan!", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Kunci Omnikey tersimpan!", Toast.LENGTH_SHORT).show();
         });
 
         box.addView(input);
@@ -316,22 +306,17 @@ public class ScreenReaderService extends AccessibilityService {
         menuCard.addView(box, 0);
     }
 
-    // MESIN PEMBACA LAYAR & EKSEKUTOR OTOMATIS (AUTO-CLICK & AUTO-TYPE)
     private void jalankanAI(String mode) {
         String apiKey = prefs.getString("api_key", "").trim();
         if (apiKey.isEmpty()) {
             menuCard.setVisibility(View.VISIBLE);
             showApiKeyDialog();
-            Toast.makeText(this, "Masukkan Kunci API terlebih dahulu!", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Masukkan Kunci API Omnikey terlebih dahulu!", Toast.LENGTH_SHORT).show();
             return;
         }
 
         statusBanner.setVisibility(View.VISIBLE);
-        if ("AUTO_ESAI".equals(mode)) {
-            statusText.setText("✍️ Menulis jawaban esai");
-        } else {
-            statusText.setText("✍️ Mengerjakan soal");
-        }
+        statusText.setText("✍️ Mengerjakan soal");
 
         AccessibilityNodeInfo rootNode = getRootInActiveWindow();
         if (rootNode == null) {
@@ -355,19 +340,18 @@ public class ScreenReaderService extends AccessibilityService {
             try {
                 String prompt;
                 if ("AUTO_PILGAN".equals(mode) || "AUTO_KKM".equals(mode)) {
-                    prompt = "Berikut adalah teks soal dan pilihan ganda dari layar ujian:\n\n" + konten +
-                            "\n\nTugasmu: Berikan HANYA teks persis dari pilihan jawaban yang benar (tanpa penjelasan tambahan, hanya teks opsinya saja agar sistem bisa mengklik otomatis).";
+                    prompt = "Berikut adalah teks soal dan pilihan ganda:\n\n" + konten +
+                            "\n\nTugas: Berikan HANYA teks persis dari pilihan jawaban yang benar (tanpa penjelasan tambahan).";
                 } else if ("AUTO_ESAI".equals(mode)) {
-                    prompt = "Berikut adalah soal esai dari layar HP:\n\n" + konten +
-                            "\n\nTugasmu: Tuliskan jawaban esai beserta langkah penyelesaiannya secara singkat, padat, dan jelas dalam 1 paragraf rapi.";
+                    prompt = "Berikut adalah soal esai:\n\n" + konten +
+                            "\n\nTugas: Tuliskan jawaban esai secara singkat, padat, dan jelas dalam 1 paragraf.";
                 } else {
-                    prompt = "Berikan jawaban dan penjelasan lengkap langkah demi langkah untuk soal di layar ini:\n\n" + konten;
+                    prompt = "Berikan jawaban dan penjelasan lengkap langkah demi langkah untuk soal ini:\n\n" + konten;
                 }
 
-                String aiReply = requestAI(apiKey, prompt).trim();
+                String aiReply = requestOmnikey(apiKey, prompt).trim();
 
                 mainHandler.post(() -> {
-                    // Salin ke clipboard sebagai cadangan
                     ClipboardManager cb = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                     cb.setPrimaryClip(ClipData.newPlainText("AI", aiReply));
 
@@ -376,11 +360,11 @@ public class ScreenReaderService extends AccessibilityService {
                         statusText.setText(clicked ? "✅ Dijawab: " + aiReply : "📋 Jawaban: " + aiReply);
                     } else if ("AUTO_ESAI".equals(mode)) {
                         boolean typed = autoTypeEssay(allNodes, aiReply);
-                        statusText.setText(typed ? "✅ Esai terisi otomatis!" : "📋 Esai disalin ke Clipboard!");
+                        statusText.setText(typed ? "✅ Esai terisi!" : "📋 Disalin ke Clipboard!");
                     } else {
                         menuCard.setVisibility(View.VISIBLE);
                         explanationBox.setVisibility(View.VISIBLE);
-                        explanationBox.setText("💡 Jawaban & Penjelasan:\n" + aiReply);
+                        explanationBox.setText("💡 Jawaban:\n" + aiReply);
                         statusText.setText("✅ Selesai");
                     }
 
@@ -389,10 +373,10 @@ public class ScreenReaderService extends AccessibilityService {
 
             } catch (Exception e) {
                 mainHandler.post(() -> {
-                    statusText.setText("❌ Gagal: Cek API Key");
+                    statusText.setText("❌ Gagal Terhubung");
                     menuCard.setVisibility(View.VISIBLE);
                     explanationBox.setVisibility(View.VISIBLE);
-                    explanationBox.setText("Detail Eror:\n" + e.getMessage());
+                    explanationBox.setText("Eror:\n" + e.getMessage());
                     mainHandler.postDelayed(() -> statusBanner.setVisibility(View.GONE), 3000);
                 });
             }
@@ -410,7 +394,6 @@ public class ScreenReaderService extends AccessibilityService {
         }
     }
 
-    // Fungsi Mengklik Otomatis Opsi Pilihan Ganda di Layar
     private boolean autoClickOption(List<AccessibilityNodeInfo> nodes, String targetAnswer) {
         String cleanTarget = targetAnswer.replaceAll("^[A-Ea-e][\\.\\)]\\s*", "").trim().toLowerCase();
         for (AccessibilityNodeInfo node : nodes) {
@@ -434,7 +417,6 @@ public class ScreenReaderService extends AccessibilityService {
         return false;
     }
 
-    // Fungsi Mengetik Otomatis ke Kolom Esai / Isian di Layar
     private boolean autoTypeEssay(List<AccessibilityNodeInfo> nodes, String essayAnswer) {
         for (AccessibilityNodeInfo node : nodes) {
             if (node.isEditable() || (node.getClassName() != null && node.getClassName().toString().contains("EditText"))) {
@@ -447,35 +429,22 @@ public class ScreenReaderService extends AccessibilityService {
         return false;
     }
 
-    private String requestAI(String apiKey, String prompt) throws Exception {
-        boolean isGemini = apiKey.startsWith("AIza") || apiKey.startsWith("AQ.");
-        URL url;
-        String payloadStr;
-
-        if (isGemini) {
-            url = new URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey);
-            JSONObject part = new JSONObject().put("text", prompt);
-            JSONObject content = new JSONObject().put("parts", new JSONArray().put(part));
-            payloadStr = new JSONObject().put("contents", new JSONArray().put(content)).toString();
-        } else {
-            url = new URL("https://apimaster.ai/v1/chat/completions");
-            JSONObject message = new JSONObject().put("role", "user").put("content", prompt);
-            payloadStr = new JSONObject()
-                    .put("model", "gpt-4o-mini")
-                    .put("messages", new JSONArray().put(message))
-                    .toString();
-        }
+    private String requestOmnikey(String apiKey, String prompt) throws Exception {
+        URL url = new URL("https://www.ommikey.my.id/api/v1/chat/completions");
+        
+        JSONObject message = new JSONObject().put("role", "user").put("content", prompt);
+        JSONObject payload = new JSONObject()
+                .put("model", "omnikey/qwen/qwen3-max:free")
+                .put("messages", new JSONArray().put(message));
 
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json");
-        if (!isGemini) {
-            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
-        }
+        conn.setRequestProperty("Authorization", "Bearer " + apiKey);
         conn.setDoOutput(true);
 
         try (OutputStream os = conn.getOutputStream()) {
-            os.write(payloadStr.getBytes("UTF-8"));
+            os.write(payload.toString().getBytes("UTF-8"));
         }
 
         int code = conn.getResponseCode();
@@ -491,11 +460,10 @@ public class ScreenReaderService extends AccessibilityService {
         }
 
         JSONObject jsonRes = new JSONObject(response.toString());
-        if (isGemini) {
-            return jsonRes.getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text");
-        } else {
-            return jsonRes.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content");
-        }
+        return jsonRes.getJSONArray("choices")
+                .getJSONObject(0)
+                .getJSONObject("message")
+                .getString("content");
     }
 
     @Override
