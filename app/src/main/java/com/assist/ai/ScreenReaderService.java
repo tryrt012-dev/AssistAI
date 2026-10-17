@@ -434,7 +434,7 @@ public class ScreenReaderService extends AccessibilityService {
         
         JSONObject message = new JSONObject().put("role", "user").put("content", prompt);
         JSONObject payload = new JSONObject()
-                .put("model", "omnikey/qwen/qwen3-max:free")
+                .put("model", "qwen-max")
                 .put("messages", new JSONArray().put(message));
 
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
