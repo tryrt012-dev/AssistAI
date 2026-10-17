@@ -68,7 +68,6 @@ public class FloatingService extends Service {
         LinearLayout rootContainer = new LinearLayout(this);
         rootContainer.setOrientation(LinearLayout.VERTICAL);
 
-        // Tombol Gelembung Melayang
         bubbleBtn = new TextView(this);
         bubbleBtn.setText("✦ AI");
         bubbleBtn.setTextColor(Color.WHITE);
@@ -82,7 +81,6 @@ public class FloatingService extends Service {
         bubbleBg.setStroke(3, Color.WHITE);
         bubbleBtn.setBackground(bubbleBg);
 
-        // Panel Menu Pop-Up Native Android
         menuLayout = new LinearLayout(this);
         menuLayout.setOrientation(LinearLayout.VERTICAL);
         menuLayout.setPadding(32, 32, 32, 32);
@@ -94,16 +92,14 @@ public class FloatingService extends Service {
         menuBg.setStroke(3, Color.parseColor("#6366F1"));
         menuLayout.setBackground(menuBg);
 
-        // Kolom API Key (Cukup diisi sekali langsung dari menu melayang!)
         inputApiKey = new EditText(this);
-        inputApiKey.setHint("Tempel Gemini API Key di sini (cukup sekali)...");
+        inputApiKey.setHint("Tempel API Key di sini...");
         inputApiKey.setHintTextColor(Color.GRAY);
         inputApiKey.setTextColor(Color.parseColor("#A6E3A1"));
         inputApiKey.setTextSize(11f);
         inputApiKey.setSingleLine(true);
         inputApiKey.setText(prefs.getString("api_key", ""));
 
-        // Kolom Soal Tugas
         inputPrompt = new EditText(this);
         inputPrompt.setHint("Ketik soal atau klik 'Tempel Soal'...");
         inputPrompt.setHintTextColor(Color.LTGRAY);
@@ -112,7 +108,6 @@ public class FloatingService extends Service {
         inputPrompt.setMinLines(2);
         inputPrompt.setMaxLines(4);
 
-        // Baris 1: Ambil Clipboard & Jawab Singkat (Google Form)
         LinearLayout row1 = new LinearLayout(this);
         row1.setOrientation(LinearLayout.HORIZONTAL);
 
@@ -141,7 +136,6 @@ public class FloatingService extends Service {
         row1.addView(btnGForm);
         row1.addView(btnFormat);
 
-        // Kotak Jawaban AI
         ScrollView scrollResult = new ScrollView(this);
         resultText = new TextView(this);
         resultText.setText("Jawaban AI akan tampil di sini...");
@@ -150,7 +144,6 @@ public class FloatingService extends Service {
         resultText.setPadding(8, 16, 8, 16);
         scrollResult.addView(resultText);
 
-        // Baris 2: Salin Jawaban, Tutup Menu, Matikan
         LinearLayout row2 = new LinearLayout(this);
         row2.setOrientation(LinearLayout.HORIZONTAL);
 
@@ -245,10 +238,10 @@ public class FloatingService extends Service {
     private void kirimKeAI(String instruksi) {
         String apiKey = inputApiKey.getText().toString().trim();
         if (apiKey.isEmpty()) {
-            Toast.makeText(this, "Isi dulu Gemini API Key di baris paling atas!", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Isi dulu API Key di baris atas!", Toast.LENGTH_SHORT).show();
             return;
         }
-        prefs.edit().putString("api_key", apiKey).apply(); // Simpan otomatis
+        prefs.edit().putString("api_key", apiKey).apply();
 
         String soal = inputPrompt.getText().toString().trim();
         if (soal.isEmpty()) {
@@ -259,18 +252,35 @@ public class FloatingService extends Service {
 
         executor.execute(() -> {
             try {
-                URL url = new URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey);
+                boolean isGemini = apiKey.startsWith("AIza");
+                URL url;
+                String payloadStr;
+
+                if (isGemini) {
+                    url = new URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey);
+                    JSONObject part = new JSONObject().put("text", instruksi + soal);
+                    JSONObject content = new JSONObject().put("parts", new JSONArray().put(part));
+                    payloadStr = new JSONObject().put("contents", new JSONArray().put(content)).toString();
+                } else {
+                    // Endpoint standar OpenAI / compatible
+                    url = new URL("https://api.openai.com/v1/chat/completions");
+                    JSONObject message = new JSONObject().put("role", "user").put("content", instruksi + soal);
+                    payloadStr = new JSONObject()
+                            .put("model", "gpt-4o-mini")
+                            .put("messages", new JSONArray().put(message))
+                            .toString();
+                }
+
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type", "application/json");
+                if (!isGemini) {
+                    conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+                }
                 conn.setDoOutput(true);
 
-                JSONObject part = new JSONObject().put("text", instruksi + soal);
-                JSONObject content = new JSONObject().put("parts", new JSONArray().put(part));
-                JSONObject payload = new JSONObject().put("contents", new JSONArray().put(content));
-
                 try (OutputStream os = conn.getOutputStream()) {
-                    os.write(payload.toString().getBytes("UTF-8"));
+                    os.write(payloadStr.getBytes("UTF-8"));
                 }
 
                 BufferedReader br = new BufferedReader(new InputStreamReader(
@@ -281,16 +291,24 @@ public class FloatingService extends Service {
                 while ((line = br.readLine()) != null) response.append(line);
 
                 JSONObject jsonRes = new JSONObject(response.toString());
-                String aiReply = jsonRes.getJSONArray("candidates")
-                        .getJSONObject(0)
-                        .getJSONObject("content")
-                        .getJSONArray("parts")
-                        .getJSONObject(0)
-                        .getString("text");
+                String aiReply;
+                if (isGemini) {
+                    aiReply = jsonRes.getJSONArray("candidates")
+                            .getJSONObject(0)
+                            .getJSONObject("content")
+                            .getJSONArray("parts")
+                            .getJSONObject(0)
+                            .getString("text");
+                } else {
+                    aiReply = jsonRes.getJSONArray("choices")
+                            .getJSONObject(0)
+                            .getJSONObject("message")
+                            .getString("content");
+                }
 
                 mainHandler.post(() -> resultText.setText(aiReply));
             } catch (Exception e) {
-                mainHandler.post(() -> resultText.setText("Error API: Pastikan API Key benar & internet aktif.\nDetail: " + e.getMessage()));
+                mainHandler.post(() -> resultText.setText("Gagal: " + e.getMessage()));
             }
         });
     }
